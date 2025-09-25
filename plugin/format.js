@@ -42,9 +42,10 @@ module.exports = function stateToEntry(state, text, author = '') {
   if (!Number.isNaN(Number(state['navigation.log']))) {
     data.log = parseFloat((state['navigation.log'] / 1852).toFixed(1));
   }
-  if (state['navigation.courseRhumbline.nextPoint.position']
-    && !Number.isNaN(Number(state['navigation.courseRhumbline.nextPoint.position'].latitude))) {
-    data.waypoint = state['navigation.courseRhumbline.nextPoint.position'];
+  if (state['navigation.course.nextPoint']
+    && state['navigation.course.nextPoint'].position
+    && !Number.isNaN(Number(state['navigation.course.nextPoint'].position.latitude))) {
+    data.waypoint = state['navigation.course.nextPoint'].position;
   }
   if (!Number.isNaN(Number(state['environment.outside.pressure']))) {
     data.barometer = parseFloat((state['environment.outside.pressure'] / 100).toFixed(2));

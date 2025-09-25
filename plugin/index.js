@@ -69,7 +69,7 @@ module.exports = (app) => {
     'navigation.speedThroughWater',
     'navigation.speedOverGround',
     'navigation.log',
-    'navigation.courseRhumbline.nextPoint.position',
+    'navigation.course.nextPoint',
     'environment.outside.pressure',
     'environment.wind.directionTrue',
     'environment.wind.speedOverGround',

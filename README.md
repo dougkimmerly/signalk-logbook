@@ -87,7 +87,7 @@ The following SignalK paths are used by this logbook.
 |`navigation.state`|||If present, used to start and stop automated hourly entries. Changes are logged.|
 |`propulsion.*.state`|||Propulsion changes are logged.|
 |`communication.vhf.channel`||`/vhf`||
-|`navigation.courseRhumbline.nextPoint.position`||`/waypoint`||
+|`navigation.course.nextPoint.position`||`/waypoint`||
 
 The [signalk-derived-data](https://github.com/sbender9/signalk-derived-data) and [signalk-path-mapper](https://github.com/sbender9/signalk-path-mapper) plugins are both useful to remap available data to the required canonical paths.
 
@@ -105,6 +105,8 @@ Some additional ideas for the future:
 
 ## Changes
 
+* 0.7.3 (git main)
+  - Get next waypoint position from `navigation.course.nextPoint` to support both rhumb line and great circle routes
 * 0.7.2 (2024-05-13)
   - Fix issue storing entries when `navigation.position` includes altitude
 * 0.7.1 (2024-04-23)

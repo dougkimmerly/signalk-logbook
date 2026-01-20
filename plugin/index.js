@@ -271,6 +271,22 @@ module.exports = (app) => {
         };
         // TODO: Send delta on manually entered position?
       }
+      // Sail configuration and sailing data
+      if (req.body.sails) {
+        data.sails = { ...req.body.sails };
+      }
+      if (req.body.tack) {
+        data.tack = req.body.tack;
+      }
+      if (req.body.pointOfSail) {
+        data.pointOfSail = req.body.pointOfSail;
+      }
+      if (req.body.heel !== undefined) {
+        data.heel = req.body.heel;
+      }
+      if (req.body.heelSide) {
+        data.heelSide = req.body.heelSide;
+      }
       const dateString = new Date(data.datetime).toISOString().substr(0, 10);
       log.appendEntry(dateString, data)
         .then(() => {

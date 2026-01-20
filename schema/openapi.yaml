@@ -153,6 +153,28 @@ components:
           type: integer
           minimum: 0
           maximum: 9
+    Sails:
+      type: object
+      additionalProperties: false
+      properties:
+        main:
+          description: Main sail state
+          type: string
+          enum:
+          - full
+          - reef1
+          - reef2
+          - down
+        jib:
+          description: Jib deployment percentage (0-100)
+          type: integer
+          minimum: 0
+          maximum: 100
+        staysail:
+          description: Staysail deployment percentage (0-100)
+          type: integer
+          minimum: 0
+          maximum: 100
     NewEntry:
       type: object
       additionalProperties: false
@@ -166,8 +188,44 @@ components:
           type: integer
           minimum: 0
           maximum: 15
+        category:
+          type: string
+          enum:
+          - navigation
+          - engine
+          - radio
+          - maintenance
         observations:
           $ref: '#/components/schemas/Observations'
+        sails:
+          $ref: '#/components/schemas/Sails'
+        tack:
+          description: Current tack
+          type: string
+          enum:
+          - port
+          - starboard
+        pointOfSail:
+          description: Point of sail relative to wind
+          type: string
+          enum:
+          - In Irons
+          - Close Hauled
+          - Close Reach
+          - Beam Reach
+          - Broad Reach
+          - Running
+        heel:
+          description: Heel angle in degrees
+          type: number
+          minimum: 0
+          maximum: 90
+        heelSide:
+          description: Side of heel
+          type: string
+          enum:
+          - port
+          - starboard
     Entry:
       type: object
       additionalProperties: false
@@ -295,6 +353,35 @@ components:
           - engine
           - radio
           - maintenance
+        sails:
+          $ref: '#/components/schemas/Sails'
+        tack:
+          description: Current tack
+          type: string
+          enum:
+          - port
+          - starboard
+        pointOfSail:
+          description: Point of sail relative to wind
+          type: string
+          enum:
+          - In Irons
+          - Close Hauled
+          - Close Reach
+          - Beam Reach
+          - Broad Reach
+          - Running
+        heel:
+          description: Heel angle in degrees
+          type: number
+          minimum: 0
+          maximum: 90
+        heelSide:
+          description: Side of heel
+          type: string
+          enum:
+          - port
+          - starboard
     Log:
       type: array
       items:

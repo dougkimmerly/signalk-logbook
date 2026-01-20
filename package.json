@@ -1,7 +1,7 @@
 {
-  "name": "@meri-imperiumi/signalk-logbook",
-  "version": "0.7.2",
-  "description": "Semi-automatic electronic logbook for Signal K",
+  "name": "signalk-logbook",
+  "version": "0.8.0",
+  "description": "Semi-automatic electronic logbook for Signal K (DSTwo fork)",
   "main": "plugin/index.js",
   "scripts": {
     "prepublishOnly": "npm run build",
@@ -14,7 +14,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/meri-imperiumi/signalk-logbook.git"
+    "url": "git://github.com/dougkimmerly/signalk-logbook.git"
   },
   "keywords": [
     "signalk-node-server-plugin",

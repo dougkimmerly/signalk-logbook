@@ -181,9 +181,14 @@ class Log {
         // TODO: Proper dereferencing
         schema.items.$ref = 'https://lille-oe.de/#Logbook-Entry';
       }
-      if (schema.$id === 'https://lille-oe.de/#Logbook-Entry' || schema.$id === 'https://lille-oe.de/#Logbook-Entry') {
+      if (schema.$id === 'https://lille-oe.de/#Logbook-Entry' || schema.$id === 'https://lille-oe.de/#Logbook-NewEntry') {
         // TODO: Proper dereferencing
-        schema.properties.observations.$ref = 'https://lille-oe.de/#Logbook-Observations';
+        if (schema.properties.observations) {
+          schema.properties.observations.$ref = 'https://lille-oe.de/#Logbook-Observations';
+        }
+        if (schema.properties.sails) {
+          schema.properties.sails.$ref = 'https://lille-oe.de/#Logbook-Sails';
+        }
       }
       v.addSchema(schema);
     });

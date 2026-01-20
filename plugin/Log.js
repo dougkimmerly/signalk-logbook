@@ -172,17 +172,15 @@ class Log {
     }
     const v = new Validator();
     Object.keys(openAPI.components.schemas).forEach((name) => {
-      const schema = {
-        ...openAPI.components.schemas[name],
-        $schema: 'https://json-schema.org/draft/2020-12/schema',
-        $id: `https://lille-oe.de/#Logbook-${name}`,
-      };
+      // Deep copy to avoid mutating the original openAPI object
+      const schema = JSON.parse(JSON.stringify(openAPI.components.schemas[name]));
+      schema.$schema = 'https://json-schema.org/draft/2020-12/schema';
+      schema.$id = `https://lille-oe.de/#Logbook-${name}`;
+
       if (schema.$id === 'https://lille-oe.de/#Logbook-Log') {
-        // TODO: Proper dereferencing
         schema.items.$ref = 'https://lille-oe.de/#Logbook-Entry';
       }
       if (schema.$id === 'https://lille-oe.de/#Logbook-Entry' || schema.$id === 'https://lille-oe.de/#Logbook-NewEntry') {
-        // TODO: Proper dereferencing
         if (schema.properties.observations) {
           schema.properties.observations.$ref = 'https://lille-oe.de/#Logbook-Observations';
         }

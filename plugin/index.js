@@ -1,5 +1,4 @@
 const CircularBuffer = require('circular-buffer');
-const timezones = require('timezones-list');
 const { readFile, writeFile } = require('fs/promises');
 const { join } = require('path');
 const Log = require('./Log');
@@ -35,14 +34,6 @@ async function saveVoyageState() {
     console.error('Failed to save voyage state:', e);
   }
 }
-
-const timezonesList = [
-  {
-    tzCode: 'UTC',
-    label: 'UTC',
-  },
-  ...timezones.default,
-];
 
 function parseJwt(token) {
   if (!token) {
@@ -105,6 +96,7 @@ module.exports = (app) => {
     'environment.wind.directionTrue',
     'environment.wind.speedOverGround',
     'environment.water.swell.state',
+    'environment.time.timezoneOffset', // For display timezone
     'propulsion.*.state',
     'propulsion.*.runTime',
     'sails.inventory.*',
@@ -458,12 +450,9 @@ module.exports = (app) => {
       },
       displayTimeZone: {
         type: 'string',
-        default: 'UTC',
-        title: 'Select the display time zone',
-        oneOf: timezonesList.map((tz) => ({
-          const: tz.tzCode,
-          title: tz.label,
-        })),
+        default: '',
+        title: 'Display time zone (fallback if SignalK timezone not available)',
+        description: 'e.g. America/Toronto, Europe/London, UTC. Leave empty to use SignalK environment.time.timezoneOffset',
       },
     },
   };

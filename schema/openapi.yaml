@@ -175,6 +175,39 @@ components:
           type: integer
           minimum: 0
           maximum: 100
+    Voyage:
+      type: object
+      additionalProperties: false
+      properties:
+        event:
+          description: Voyage event type
+          type: string
+          enum:
+          - start
+          - daily
+          - end
+        destination:
+          description: Destination name
+          type: string
+        distanceTotal:
+          description: Total voyage distance in nautical miles
+          type: number
+          minimum: 0
+        miles24h:
+          description: Miles covered in last 24 hours
+          type: number
+        milesFromOrigin:
+          description: Total miles from voyage start
+          type: number
+          minimum: 0
+        milesToDestination:
+          description: Remaining miles to destination
+          type: number
+          minimum: 0
+        dayNumber:
+          description: Day number of voyage (1, 2, 3, etc.)
+          type: integer
+          minimum: 1
     NewEntry:
       type: object
       additionalProperties: false
@@ -226,6 +259,8 @@ components:
           enum:
           - port
           - starboard
+        voyage:
+          $ref: '#/components/schemas/Voyage'
     Entry:
       type: object
       additionalProperties: false
@@ -382,6 +417,8 @@ components:
           enum:
           - port
           - starboard
+        voyage:
+          $ref: '#/components/schemas/Voyage'
     Log:
       type: array
       items:

@@ -189,6 +189,9 @@ class Log {
         if (schema.properties.sails) {
           schema.properties.sails.$ref = 'https://lille-oe.de/#Logbook-Sails';
         }
+        if (schema.properties.voyage) {
+          schema.properties.voyage.$ref = 'https://lille-oe.de/#Logbook-Voyage';
+        }
       }
       v.addSchema(schema);
     });

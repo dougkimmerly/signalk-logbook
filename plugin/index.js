@@ -1,9 +1,40 @@
 const CircularBuffer = require('circular-buffer');
 const timezones = require('timezones-list');
+const { readFile, writeFile } = require('fs/promises');
+const { join } = require('path');
 const Log = require('./Log');
 const stateToEntry = require('./format');
 const { processTriggers, processHourly } = require('./triggers');
 const openAPI = require('../schema/openapi.json');
+
+// Voyage state tracking
+let voyageState = { active: false };
+let voyageStatePath = null;
+
+async function loadVoyageState(dataDir) {
+  voyageStatePath = join(dataDir, 'voyage-state.json');
+  try {
+    const data = await readFile(voyageStatePath, 'utf-8');
+    voyageState = JSON.parse(data);
+    if (voyageState.startTime) {
+      voyageState.startTime = new Date(voyageState.startTime);
+    }
+    if (voyageState.lastDailyTime) {
+      voyageState.lastDailyTime = new Date(voyageState.lastDailyTime);
+    }
+  } catch (e) {
+    voyageState = { active: false };
+  }
+}
+
+async function saveVoyageState() {
+  if (!voyageStatePath) return;
+  try {
+    await writeFile(voyageStatePath, JSON.stringify(voyageState, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Failed to save voyage state:', e);
+  }
+}
 
 const timezonesList = [
   {
@@ -90,6 +121,7 @@ module.exports = (app) => {
 
   plugin.start = () => {
     log = new Log(app.getDataDirPath());
+    loadVoyageState(app.getDataDirPath());
     const subscription = {
       context: 'vessels.self',
       subscribe: paths.map((p) => ({
@@ -151,6 +183,44 @@ module.exports = (app) => {
             app.setPluginError(`Failed to store entry: ${err.message}`);
           });
         sendCrewNames(app, plugin);
+
+        // Check for voyage 24h mark
+        if (voyageState.active && voyageState.lastDailyTime) {
+          const now = new Date();
+          const hoursSinceLastDaily = (now - voyageState.lastDailyTime) / (1000 * 60 * 60);
+          if (hoursSinceLastDaily >= 24) {
+            // Time for a daily voyage entry
+            const currentLog = state['navigation.log'] || 0;
+            const miles24h = currentLog - (voyageState.lastDailyLog || 0);
+            const milesFromOrigin = currentLog - (voyageState.startLog || 0);
+            const milesToDestination = Math.max(0, (voyageState.distanceTotal || 0) - milesFromOrigin);
+            voyageState.dayNumber = (voyageState.dayNumber || 0) + 1;
+            voyageState.lastDailyTime = now;
+            voyageState.lastDailyLog = currentLog;
+            saveVoyageState();
+
+            const entry = stateToEntry(state, `Day ${voyageState.dayNumber} - 24h run: ${miles24h.toFixed(1)} nm`, 'auto');
+            entry.category = 'navigation';
+            entry.voyage = {
+              event: 'daily',
+              destination: voyageState.destination,
+              distanceTotal: voyageState.distanceTotal,
+              miles24h: Math.round(miles24h * 10) / 10,
+              milesFromOrigin: Math.round(milesFromOrigin * 10) / 10,
+              milesToDestination: Math.round(milesToDestination * 10) / 10,
+              dayNumber: voyageState.dayNumber,
+            };
+
+            const dateString = now.toISOString().substr(0, 10);
+            log.appendEntry(dateString, entry)
+              .then(() => {
+                setStatus(`Voyage day ${voyageState.dayNumber}: ${miles24h.toFixed(1)} nm in 24h`);
+              })
+              .catch((err) => {
+                app.setPluginError(`Failed to store voyage entry: ${err.message}`);
+              });
+          }
+        }
       }
       buffer.enq(state);
       // We can keep a clone of the previous values
@@ -222,6 +292,12 @@ module.exports = (app) => {
       app.debug(error.message);
       res.sendStatus(500);
     }
+    // Voyage state endpoint
+    router.get('/voyage', (req, res) => {
+      res.contentType('application/json');
+      res.send(JSON.stringify(voyageState));
+    });
+
     router.get('/logs', (req, res) => {
       res.contentType('application/json');
       log.listDates()
@@ -286,6 +362,27 @@ module.exports = (app) => {
       }
       if (req.body.heelSide) {
         data.heelSide = req.body.heelSide;
+      }
+      // Voyage tracking
+      if (req.body.voyage) {
+        data.voyage = { ...req.body.voyage };
+        // Handle voyage state changes
+        if (req.body.voyage.event === 'start') {
+          voyageState = {
+            active: true,
+            startTime: new Date(data.datetime),
+            startLog: data.log || 0,
+            destination: req.body.voyage.destination,
+            distanceTotal: req.body.voyage.distanceTotal || 0,
+            lastDailyTime: new Date(data.datetime),
+            lastDailyLog: data.log || 0,
+            dayNumber: 0,
+          };
+          saveVoyageState();
+        } else if (req.body.voyage.event === 'end') {
+          voyageState = { active: false };
+          saveVoyageState();
+        }
       }
       const dateString = new Date(data.datetime).toISOString().substr(0, 10);
       log.appendEntry(dateString, data)

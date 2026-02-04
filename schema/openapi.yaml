@@ -208,6 +208,25 @@ components:
           description: Day number of voyage (1, 2, 3, etc.)
           type: integer
           minimum: 1
+    AIS:
+      type: object
+      additionalProperties: false
+      properties:
+        mmsi:
+          type: string
+          description: MMSI of the detected vessel
+        name:
+          type: string
+          description: Name of the detected vessel
+        distance:
+          type: number
+          description: Distance at detection in nm
+        cpa:
+          type: number
+          description: Closest point of approach in nm
+        tcpa:
+          type: number
+          description: Time to CPA in minutes
     NewEntry:
       type: object
       additionalProperties: false
@@ -261,6 +280,8 @@ components:
           - starboard
         voyage:
           $ref: '#/components/schemas/Voyage'
+        ais:
+          $ref: '#/components/schemas/AIS'
     Entry:
       type: object
       additionalProperties: false
@@ -419,6 +440,8 @@ components:
           - starboard
         voyage:
           $ref: '#/components/schemas/Voyage'
+        ais:
+          $ref: '#/components/schemas/AIS'
     Log:
       type: array
       items:

@@ -196,6 +196,8 @@ exports.processTriggers = function processTriggers(path, value, oldState, log, a
   return Promise.resolve();
 };
 
+exports.isUnderWay = isUnderWay;
+
 exports.processHourly = function processHourly(oldState, log, app) {
   if (oldState['navigation.state'] !== 'sailing' && oldState['navigation.state'] !== 'motoring') {
     return Promise.resolve();

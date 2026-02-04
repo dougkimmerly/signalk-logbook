@@ -190,6 +190,9 @@ class Log {
         if (schema.properties.voyage) {
           schema.properties.voyage.$ref = 'https://lille-oe.de/#Logbook-Voyage';
         }
+        if (schema.properties.ais) {
+          schema.properties.ais.$ref = 'https://lille-oe.de/#Logbook-AIS';
+        }
       }
       v.addSchema(schema);
     });

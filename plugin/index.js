@@ -3,7 +3,7 @@ const { readFile, writeFile } = require('fs/promises');
 const { join } = require('path');
 const Log = require('./Log');
 const stateToEntry = require('./format');
-const { processTriggers, processHourly } = require('./triggers');
+const { processTriggers, processHourly, isUnderWay } = require('./triggers');
 const openAPI = require('../schema/openapi.json');
 
 // Voyage state tracking
@@ -67,6 +67,119 @@ function sendCrewNames(app, plugin) {
     return;
   }
   sendDelta(app, plugin, new Date(), 'communication.crewNames', configuration.crewNames || []);
+}
+
+// AIS proximity tracking
+const ALERT_DISTANCE_M = 9260; // 5 nm in meters
+const CLEAR_DISTANCE_M = 12964; // 7 nm in meters
+const STALE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
+const aisAlerted = new Map(); // vessel context -> timestamp
+
+function calculateCPA(ownPos, ownCog, ownSog, targetPos, targetCog, targetSog) {
+  // Flat-earth approximation (accurate within 10 nm)
+  const latMid = (ownPos.latitude + targetPos.latitude) / 2;
+  const cosLat = Math.cos((latMid * Math.PI) / 180);
+
+  // Relative position in nm
+  const dx = (targetPos.longitude - ownPos.longitude) * 60 * cosLat;
+  const dy = (targetPos.latitude - ownPos.latitude) * 60;
+
+  // Convert SOG from m/s to nm/min
+  const ownSpd = (ownSog * 1.94384) / 60;
+  const tgtSpd = (targetSog * 1.94384) / 60;
+
+  // Velocity components (COG in radians, 0=north, clockwise)
+  const dvx = tgtSpd * Math.sin(targetCog) - ownSpd * Math.sin(ownCog);
+  const dvy = tgtSpd * Math.cos(targetCog) - ownSpd * Math.cos(ownCog);
+
+  const dvSq = dvx * dvx + dvy * dvy;
+  if (dvSq < 0.0001) {
+    // Parallel courses / stationary — CPA is current distance
+    return { cpa: parseFloat(Math.sqrt(dx * dx + dy * dy).toFixed(1)), tcpa: 0 };
+  }
+
+  // Time of closest approach in minutes
+  const tcpa = -(dx * dvx + dy * dvy) / dvSq;
+  if (tcpa < 0) {
+    // Vessels diverging — CPA already passed
+    return { cpa: parseFloat(Math.sqrt(dx * dx + dy * dy).toFixed(1)), tcpa: 0 };
+  }
+
+  const cpaDx = dx + dvx * tcpa;
+  const cpaDy = dy + dvy * tcpa;
+  return {
+    cpa: parseFloat(Math.sqrt(cpaDx * cpaDx + cpaDy * cpaDy).toFixed(1)),
+    tcpa: Math.round(tcpa),
+  };
+}
+
+function checkAISProximity(state, log, app, setStatus) {
+  const vessels = app.getPath('vessels');
+  if (!vessels) return;
+
+  const selfId = app.selfId;
+  const ownPos = state['navigation.position'];
+  if (!ownPos) return;
+  const ownCog = state['navigation.courseOverGroundTrue'] || 0;
+  const ownSog = state['navigation.speedOverGround'] || 0;
+
+  const now = Date.now();
+
+  // Clean stale entries
+  aisAlerted.forEach((timestamp, key) => {
+    if (now - timestamp > STALE_TIMEOUT_MS) {
+      aisAlerted.delete(key);
+    }
+  });
+
+  Object.keys(vessels).forEach((ctx) => {
+    if (ctx === selfId || ctx === 'self') return;
+    const vessel = vessels[ctx];
+    const distNode = vessel.navigation && vessel.navigation.distanceToSelf;
+    if (!distNode || distNode.value == null) return;
+
+    const distance = distNode.value; // meters
+
+    if (distance < ALERT_DISTANCE_M && !aisAlerted.has(ctx)) {
+      const distNm = parseFloat((distance / 1852).toFixed(1));
+      const name = vessel.name || 'Unknown';
+      const mmsi = vessel.mmsi || ctx;
+
+      // Target dynamics for CPA
+      const tCog = (vessel.navigation.courseOverGroundTrue && vessel.navigation.courseOverGroundTrue.value) || 0;
+      const tSog = (vessel.navigation.speedOverGround && vessel.navigation.speedOverGround.value) || 0;
+      const tPos = (vessel.navigation.position && vessel.navigation.position.value) || null;
+
+      let cpa = { cpa: distNm, tcpa: 0 };
+      if (tPos && tSog > 0.1) {
+        cpa = calculateCPA(ownPos, ownCog, ownSog, tPos, tCog, tSog);
+      }
+
+      const text = `AIS: ${name} (${mmsi}) at ${distNm} nm, CPA ${cpa.cpa} nm in ${cpa.tcpa} min`;
+      const entry = stateToEntry(state, text, 'auto');
+      entry.category = 'navigation';
+      entry.ais = {
+        mmsi: String(mmsi),
+        name: String(name),
+        distance: distNm,
+        cpa: cpa.cpa,
+        tcpa: cpa.tcpa,
+      };
+
+      const dateString = new Date(entry.datetime).toISOString().substr(0, 10);
+      log.appendEntry(dateString, entry)
+        .then(() => {
+          setStatus(`AIS proximity: ${name} at ${distNm} nm`);
+        })
+        .catch((err) => {
+          app.error(`Failed to store AIS entry: ${err.message}`);
+        });
+
+      aisAlerted.set(ctx, now);
+    } else if (distance > CLEAR_DISTANCE_M && aisAlerted.has(ctx)) {
+      aisAlerted.delete(ctx);
+    }
+  });
 }
 
 module.exports = (app) => {
@@ -215,6 +328,11 @@ module.exports = (app) => {
           }
         }
       }
+      // Check AIS proximity (only when underway)
+      if (isUnderWay(state)) {
+        checkAISProximity(state, log, app, setStatus);
+      }
+
       buffer.enq(state);
       // We can keep a clone of the previous values
       state = {
@@ -436,6 +554,7 @@ module.exports = (app) => {
     unsubscribes.forEach((f) => f());
     unsubscribes = [];
     clearInterval(interval);
+    aisAlerted.clear();
   };
 
   plugin.schema = {

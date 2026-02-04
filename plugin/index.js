@@ -182,7 +182,8 @@ module.exports = (app) => {
           const hoursSinceLastDaily = (now - voyageState.lastDailyTime) / (1000 * 60 * 60);
           if (hoursSinceLastDaily >= 24) {
             // Time for a daily voyage entry
-            const currentLog = state['navigation.log'] || 0;
+            const currentLogM = state['navigation.log'] || 0;
+            const currentLog = parseFloat((currentLogM / 1852).toFixed(1));
             const miles24h = currentLog - (voyageState.lastDailyLog || 0);
             const milesFromOrigin = currentLog - (voyageState.startLog || 0);
             const milesToDestination = Math.max(0, (voyageState.distanceTotal || 0) - milesFromOrigin);

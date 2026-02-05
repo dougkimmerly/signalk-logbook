@@ -73,7 +73,7 @@ function sendCrewNames(app, plugin) {
 const ALERT_DISTANCE_M = 9260; // 5 nm in meters
 const CLEAR_DISTANCE_M = 12964; // 7 nm in meters
 const STALE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
-const aisAlerted = new Map(); // vessel context -> timestamp
+const aisAlerted = new Map(); // vessel context -> { timestamp, minDistance, name, mmsi }
 
 function calculateCPA(ownPos, ownCog, ownSog, targetPos, targetCog, targetSog) {
   // Flat-earth approximation (accurate within 10 nm)
@@ -126,8 +126,8 @@ function checkAISProximity(state, log, app, setStatus) {
   const now = Date.now();
 
   // Clean stale entries
-  aisAlerted.forEach((timestamp, key) => {
-    if (now - timestamp > STALE_TIMEOUT_MS) {
+  aisAlerted.forEach((data, key) => {
+    if (now - data.timestamp > STALE_TIMEOUT_MS) {
       aisAlerted.delete(key);
     }
   });
@@ -140,12 +140,14 @@ function checkAISProximity(state, log, app, setStatus) {
 
     const distance = distNode.value; // meters
 
+    const distNm = parseFloat((distance / 1852).toFixed(1));
+
     if (distance < ALERT_DISTANCE_M && !aisAlerted.has(ctx)) {
-      const distNm = parseFloat((distance / 1852).toFixed(1));
+      // New vessel entering zone - log approach with predicted CPA
       const name = vessel.name || 'Unknown';
       const mmsi = vessel.mmsi || ctx;
 
-      // Target dynamics for CPA
+      // Target dynamics for CPA prediction
       const tCog = (vessel.navigation.courseOverGroundTrue && vessel.navigation.courseOverGroundTrue.value) || 0;
       const tSog = (vessel.navigation.speedOverGround && vessel.navigation.speedOverGround.value) || 0;
       const tPos = (vessel.navigation.position && vessel.navigation.position.value) || null;
@@ -155,7 +157,7 @@ function checkAISProximity(state, log, app, setStatus) {
         cpa = calculateCPA(ownPos, ownCog, ownSog, tPos, tCog, tSog);
       }
 
-      const text = `AIS: ${name} (${mmsi}) at ${distNm} nm, CPA ${cpa.cpa} nm in ${cpa.tcpa} min`;
+      const text = `AIS: ${name} (${mmsi}) approaching at ${distNm} nm, predicted CPA ${cpa.cpa} nm in ${cpa.tcpa} min`;
       const entry = stateToEntry(state, text, 'auto');
       entry.category = 'navigation';
       entry.ais = {
@@ -175,9 +177,44 @@ function checkAISProximity(state, log, app, setStatus) {
           app.error(`Failed to store AIS entry: ${err.message}`);
         });
 
-      aisAlerted.set(ctx, now);
-    } else if (distance > CLEAR_DISTANCE_M && aisAlerted.has(ctx)) {
-      aisAlerted.delete(ctx);
+      aisAlerted.set(ctx, {
+        timestamp: now,
+        minDistance: distNm,
+        name,
+        mmsi,
+      });
+    } else if (aisAlerted.has(ctx)) {
+      const tracked = aisAlerted.get(ctx);
+
+      // Update minimum distance if closer
+      if (distNm < tracked.minDistance) {
+        tracked.minDistance = distNm;
+      }
+
+      // Vessel clearing the zone - log actual CPA
+      if (distance > CLEAR_DISTANCE_M) {
+        const text = `AIS: ${tracked.name} (${tracked.mmsi}) cleared, actual CPA was ${tracked.minDistance} nm`;
+        const entry = stateToEntry(state, text, 'auto');
+        entry.category = 'navigation';
+        entry.ais = {
+          mmsi: String(tracked.mmsi),
+          name: String(tracked.name),
+          distance: distNm,
+          cpa: tracked.minDistance,
+          tcpa: 0,
+        };
+
+        const dateString = new Date(entry.datetime).toISOString().substr(0, 10);
+        log.appendEntry(dateString, entry)
+          .then(() => {
+            setStatus(`AIS cleared: ${tracked.name}, CPA was ${tracked.minDistance} nm`);
+          })
+          .catch((err) => {
+            app.error(`Failed to store AIS entry: ${err.message}`);
+          });
+
+        aisAlerted.delete(ctx);
+      }
     }
   });
 }

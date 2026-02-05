@@ -113,16 +113,21 @@ function calculateCPA(ownPos, ownCog, ownSog, targetPos, targetCog, targetSog) {
   };
 }
 
+// Helper to extract SignalK value from nested path
+function getVal(obj, ...keys) {
+  for (const k of keys) {
+    if (obj == null) return null;
+    obj = obj[k];
+  }
+  if (obj && typeof obj === 'object' && 'value' in obj) return obj.value;
+  return obj;
+}
+
 function checkAISProximity(state, log, app, setStatus) {
   const vessels = app.getPath('vessels');
   if (!vessels) return;
 
   const selfId = app.selfId;
-  const ownPos = state['navigation.position'];
-  if (!ownPos) return;
-  const ownCog = state['navigation.courseOverGroundTrue'] || 0;
-  const ownSog = state['navigation.speedOverGround'] || 0;
-
   const now = Date.now();
 
   // Clean stale entries
@@ -135,54 +140,19 @@ function checkAISProximity(state, log, app, setStatus) {
   Object.keys(vessels).forEach((ctx) => {
     if (ctx === selfId || ctx === 'self') return;
     const vessel = vessels[ctx];
-    const distNode = vessel.navigation && vessel.navigation.distanceToSelf;
-    if (!distNode || distNode.value == null) return;
-
-    const distance = distNode.value; // meters
+    const distance = getVal(vessel, 'navigation', 'distanceToSelf');
+    if (distance == null) return;
 
     const distNm = parseFloat((distance / 1852).toFixed(1));
 
     if (distance < ALERT_DISTANCE_M && !aisAlerted.has(ctx)) {
-      // New vessel entering zone - log approach with predicted CPA
-      const name = vessel.name || 'Unknown';
-      const mmsi = vessel.mmsi || ctx;
-
-      // Target dynamics for CPA prediction
-      const tCog = (vessel.navigation.courseOverGroundTrue && vessel.navigation.courseOverGroundTrue.value) || 0;
-      const tSog = (vessel.navigation.speedOverGround && vessel.navigation.speedOverGround.value) || 0;
-      const tPos = (vessel.navigation.position && vessel.navigation.position.value) || null;
-
-      let cpa = { cpa: distNm, tcpa: 0 };
-      if (tPos && tSog > 0.1) {
-        cpa = calculateCPA(ownPos, ownCog, ownSog, tPos, tCog, tSog);
-      }
-
-      const text = `AIS: ${name} (${mmsi}) approaching at ${distNm} nm, predicted CPA ${cpa.cpa} nm in ${cpa.tcpa} min`;
-      const entry = stateToEntry(state, text, 'auto');
-      entry.category = 'navigation';
-      entry.ais = {
-        mmsi: String(mmsi),
-        name: String(name),
-        distance: distNm,
-        cpa: cpa.cpa,
-        tcpa: cpa.tcpa,
-      };
-
-      const dateString = new Date(entry.datetime).toISOString().substr(0, 10);
-      log.appendEntry(dateString, entry)
-        .then(() => {
-          setStatus(`AIS proximity: ${name} at ${distNm} nm`);
-        })
-        .catch((err) => {
-          app.error(`Failed to store AIS entry: ${err.message}`);
-        });
-
+      // New vessel entering zone - start tracking (no log yet)
       aisAlerted.set(ctx, {
         timestamp: now,
         minDistance: distNm,
-        name,
-        mmsi,
+        context: ctx,
       });
+      setStatus(`AIS tracking: ${vessel.name || ctx} at ${distNm} nm`);
     } else if (aisAlerted.has(ctx)) {
       const tracked = aisAlerted.get(ctx);
 
@@ -191,23 +161,40 @@ function checkAISProximity(state, log, app, setStatus) {
         tracked.minDistance = distNm;
       }
 
-      // Vessel clearing the zone - log actual CPA
+      // Vessel clearing the zone - log with actual CPA and full details
       if (distance > CLEAR_DISTANCE_M) {
-        const text = `AIS: ${tracked.name} (${tracked.mmsi}) cleared, actual CPA was ${tracked.minDistance} nm`;
+        const name = vessel.name || 'Unknown';
+        const mmsi = vessel.mmsi || '';
+        const callsign = getVal(vessel, 'communication', 'callsignVhf') || '';
+        const shipType = getVal(vessel, 'design', 'aisShipType');
+        const shipTypeName = (shipType && shipType.name) || '';
+        const length = getVal(vessel, 'design', 'length', 'overall');
+        const beam = getVal(vessel, 'design', 'beam');
+        const destination = getVal(vessel, 'navigation', 'destination', 'commonName') || '';
+
+        // Build descriptive text
+        let desc = name;
+        if (shipTypeName) desc += ` (${shipTypeName})`;
+        if (callsign) desc += ` [${callsign}]`;
+
+        const text = `AIS: ${desc} passed at ${tracked.minDistance} nm`;
         const entry = stateToEntry(state, text, 'auto');
         entry.category = 'navigation';
         entry.ais = {
-          mmsi: String(tracked.mmsi),
-          name: String(tracked.name),
-          distance: distNm,
+          mmsi: String(mmsi),
+          name,
           cpa: tracked.minDistance,
-          tcpa: 0,
         };
+        if (callsign) entry.ais.callsign = callsign;
+        if (shipTypeName) entry.ais.shipType = shipTypeName;
+        if (length) entry.ais.length = parseFloat(length.toFixed(1));
+        if (beam) entry.ais.beam = parseFloat(beam.toFixed(1));
+        if (destination) entry.ais.destination = destination;
 
         const dateString = new Date(entry.datetime).toISOString().substr(0, 10);
         log.appendEntry(dateString, entry)
           .then(() => {
-            setStatus(`AIS cleared: ${tracked.name}, CPA was ${tracked.minDistance} nm`);
+            setStatus(`AIS: ${name} passed at ${tracked.minDistance} nm`);
           })
           .catch((err) => {
             app.error(`Failed to store AIS entry: ${err.message}`);

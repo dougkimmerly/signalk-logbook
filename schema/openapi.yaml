@@ -214,19 +214,28 @@ components:
       properties:
         mmsi:
           type: string
-          description: MMSI of the detected vessel
+          description: MMSI of the vessel
         name:
           type: string
-          description: Name of the detected vessel
-        distance:
+          description: Name of the vessel
+        callsign:
+          type: string
+          description: VHF callsign
+        shipType:
+          type: string
+          description: AIS ship type (e.g. Cargo ship, Sailing vessel)
+        length:
           type: number
-          description: Distance at detection in nm
+          description: Length overall in meters
+        beam:
+          type: number
+          description: Beam in meters
+        destination:
+          type: string
+          description: AIS destination
         cpa:
           type: number
           description: Closest point of approach in nm
-        tcpa:
-          type: number
-          description: Time to CPA in minutes
     NewEntry:
       type: object
       additionalProperties: false
